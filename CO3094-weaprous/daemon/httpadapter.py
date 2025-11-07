@@ -23,6 +23,7 @@ Request and Response objects to handle client-server communication.
 from .request import Request
 from .response import Response
 from .dictionary import CaseInsensitiveDict
+import socket
 
 class HttpAdapter:
     """
@@ -103,7 +104,25 @@ class HttpAdapter:
         resp = self.response
 
         # Handle the request
-        msg = conn.recv(1024).decode()
+        msg = ""
+        try:
+            while True:
+                chunk = conn.recv(1024)
+                if not chunk: 
+                    break
+                msg += chunk
+                if "\r\n\r\n" in msg: 
+                    break
+        except socket.timeout:
+            print("[HttpAdapter] Connection timed out for %s:%d" % addr)
+            conn.close()
+            return
+        except Exception as e:
+            conn.close()
+            print("[HttpAdapter] Error during recv: %s" % str(e))
+            return
+        
+        
         req.prepare(msg, routes)
 
         # Handle request hook

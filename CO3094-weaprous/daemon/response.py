@@ -201,6 +201,15 @@ class Response():
             #  TODO: implement the step of fetch the object file
             #        store in the return value of content
             #
+        # init blank content
+        content = b''
+        try:
+            # Open file in read mode
+            with open(filepath, 'r') as f:
+                content = f.read()
+        except IOError:
+            print("[Response] ERROR: File not found at location {}".format(filepath))
+            
         return len(content), content
 
 
@@ -222,7 +231,7 @@ class Response():
                 "Accept-Language": "{}".format(reqhdr.get("Accept-Language", "en-US,en;q=0.9")),
                 "Authorization": "{}".format(reqhdr.get("Authorization", "Basic <credentials>")),
                 "Cache-Control": "no-cache",
-                "Content-Type": "{}".format(self.headers['Content-Type']),
+                "Content-Type": "{}".format(self.headers.get("Content-Type", "text/plain")),
                 "Content-Length": "{}".format(len(self._content)),
 #                "Cookie": "{}".format(reqhdr.get("Cookie", "sessionid=xyz789")), #dummy cooki
         #
@@ -242,6 +251,34 @@ class Response():
             #  TODO: implement the header building to create formated
             #        header from the provied headers
             #
+            
+        # Build status line from response
+        status_line = "HTTP/1.1 {} {}\r\n".format(
+            self.status_code, 
+            self.reason 
+        )
+        
+        print("")
+        print("build header status line", status_line)
+        print("")
+        
+
+        formatted_headers = []
+        
+        # Format each header pair
+        for key, value in headers.items():
+            # Standard HTTP format: Key: Value\r\n
+            formatted_headers.append("{}: {}\r\n".format(key, value))
+        
+        header_string = "".join(formatted_headers)
+        
+        # Build the final string: Status Line + Headers + required blank line (\r\n)
+        fmt_header = status_line + header_string + "\r\n"
+
+        print("")
+        print("build header fmt_header", fmt_header)
+        print("")
+        
         #
         # TODO prepare the request authentication
         #
