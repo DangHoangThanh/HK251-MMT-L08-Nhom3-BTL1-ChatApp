@@ -46,6 +46,7 @@ def login(headers="guest", body="anonymous"):
     :param body (str): The request body or login payload.
     """
     print "[SampleApp] Logging in {} to {}".format(headers, body)
+    return(200)
 
 @app.route('/hello', methods=['PUT'])
 def hello(headers, body):
@@ -59,6 +60,7 @@ def hello(headers, body):
     :param body (str): The request body or message payload.
     """
     print "[SampleApp] ['PUT'] Hello in {} to {}".format(headers, body)
+    return(200)
 
 if __name__ == "__main__":
     # Parse command-line arguments to configure server IP and port
