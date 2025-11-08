@@ -88,13 +88,19 @@ def parse_virtual_hosts(config_file):
         #       the policy is applied to identify the highes matching
         #       proxy_pass
         #
-        if len(proxy_map.get(host,[])) == 1:
-            routes[host] = (proxy_map.get(host,[])[0], dist_policy_map)
-        # esle if:
-        #         TODO:  apply further policy matching here
-        #
+        # Implement distribution policy selection.
+        mapped_targets = proxy_map.get(host, [])
+        if len(mapped_targets) == 1:
+            routes[host] = (mapped_targets[0], dist_policy_map)
         else:
-            routes[host] = (proxy_map.get(host,[]), dist_policy_map)
+            if dist_policy_map == 'round-robin':
+                routes[host] = (mapped_targets, dist_policy_map)
+            elif dist_policy_map == 'fallback':
+                # fallback policy keeps the priority order
+                routes[host] = (mapped_targets, dist_policy_map)
+            else:
+                # default: prefer first backend, keep others for potential future use
+                routes[host] = (mapped_targets, 'round-robin')
 
     for key, value in routes.items():
         print key, value

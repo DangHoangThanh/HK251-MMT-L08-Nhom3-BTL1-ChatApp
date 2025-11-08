@@ -23,7 +23,11 @@ The current version supports MIME type detection, content loading and header for
 import datetime
 import os
 import mimetypes
+import json
+import sys
 from .dictionary import CaseInsensitiveDict
+
+STRING_TYPES = (str, bytes)
 
 BASE_DIR = ""
 
@@ -204,12 +208,12 @@ class Response():
         # init blank content
         content = b''
         try:
-            # Open file in read mode
-            with open(filepath, 'r') as f:
+            with open(filepath, 'rb') as f:
                 content = f.read()
         except IOError:
             print("[Response] ERROR: File not found at location {}".format(filepath))
-            
+            return None, None
+
         return len(content), content
 
 
@@ -246,6 +250,12 @@ class Response():
                 "User-Agent": "{}".format(reqhdr.get("User-Agent", "Chrome/123.0.0.0")),
             }
 
+        if getattr(request, 'auth', None):
+            headers['Authorization'] = request.auth
+
+        if hasattr(request, 'cookies') and request.cookies:
+            headers['Set-Cookie'] = request.build_cookie_header()
+
         # Header text alignment
             #
             #  TODO: implement the header building to create formated
@@ -257,11 +267,7 @@ class Response():
             self.status_code, 
             self.reason 
         )
-        
-        print("")
-        print("build header status line", status_line)
-        print("")
-        
+
 
         formatted_headers = []
         
@@ -275,9 +281,7 @@ class Response():
         # Build the final string: Status Line + Headers + required blank line (\r\n)
         fmt_header = status_line + header_string + "\r\n"
 
-        print("")
-        print("build header fmt_header", fmt_header)
-        print("")
+
         
         #
         # TODO prepare the request authentication
@@ -314,6 +318,41 @@ class Response():
         :rtype bytes: complete HTTP response using prepared headers and content.
         """
 
+        hook_payload = getattr(request, 'hook_response', None)
+        if hook_payload is not None:
+            status_code = 200
+            body_content = hook_payload
+
+            if isinstance(hook_payload, tuple) and len(hook_payload) == 2:
+                status_code, body_content = hook_payload
+
+            if isinstance(body_content, int) and hook_payload is body_content:
+                status_code = body_content
+                body_content = ''
+
+            if isinstance(body_content, (dict, list)):
+                body_bytes = json.dumps(body_content)
+                self.headers['Content-Type'] = 'application/json'
+            elif body_content is None:
+                body_bytes = ''
+                self.headers['Content-Type'] = 'text/plain'
+            elif isinstance(body_content, STRING_TYPES):
+                body_bytes = body_content
+                self.headers['Content-Type'] = 'text/plain'
+            else:
+                body_bytes = str(body_content)
+                self.headers['Content-Type'] = 'text/plain'
+
+            if not isinstance(body_bytes, STRING_TYPES):
+                body_bytes = str(body_bytes)
+
+            self._content = body_bytes
+            self.status_code = status_code
+            self.reason = "OK"
+            self.headers['Content-Length'] = str(len(body_bytes))
+            self._header = self.build_response_header(request)
+            return self._header + body_bytes
+
         path = request.path
 
         mime_type = self.get_mime_type(path)
@@ -330,9 +369,19 @@ class Response():
         # TODO: add support objects
         #
         else:
+            try:
+                base_dir = self.prepare_content_type(mime_type=mime_type)
+            except ValueError:
+                return self.build_notfound()
+
+        content_length, content = self.build_content(path, base_dir)
+        if content is None:
             return self.build_notfound()
 
-        c_len, self._content = self.build_content(path, base_dir)
+        self._content = content
+        self.status_code = 200
+        self.reason = "OK"
+        self.headers['Content-Length'] = str(content_length)
         self._header = self.build_response_header(request)
 
         return self._header + self._content

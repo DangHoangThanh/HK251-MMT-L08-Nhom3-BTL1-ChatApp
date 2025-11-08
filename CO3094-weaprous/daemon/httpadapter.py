@@ -24,6 +24,18 @@ from .request import Request
 from .response import Response
 from .dictionary import CaseInsensitiveDict
 import socket
+import base64
+from urlparse import urlparse
+
+
+def get_encoding_from_headers(headers):
+    encoding = None
+    if headers:
+        encoding = headers.get('content-type') or headers.get('Content-Type')
+
+    if encoding and 'charset=' in encoding:
+        return encoding.split('charset=', 1)[1].strip()
+    return 'utf-8'
 
 class HttpAdapter:
     """
@@ -128,10 +140,15 @@ class HttpAdapter:
         # Handle request hook
         if req.hook:
             print("[HttpAdapter] hook in route-path METHOD {} PATH {}".format(req.hook._route_path,req.hook._route_methods))
-            req.hook(headers = "bksysnet",body = "get in touch")
             #
             # TODO: handle for App hook here
             #
+            try:
+                hook_response = req.hook(headers=req.headers, body=req.body)
+                req.hook_response = hook_response
+            except Exception as exc:
+                req.hook_response = None
+                print("[HttpAdapter] Error executing hook: %s" % str(exc))
 
         # Build response
         response = resp.build_response(req)
@@ -242,9 +259,25 @@ class HttpAdapter:
         #       username, password =...
         # we provide dummy auth here
         #
-        username, password = ("user1", "password")
+        if not proxy:
+            return headers
+
+        parsed = urlparse(proxy)
+
+        username = parsed.username
+        password = parsed.password
+
+        if username is None and '@' in parsed.netloc:
+            userinfo = parsed.netloc.split('@', 1)[0]
+            if ':' in userinfo:
+                username, password = userinfo.split(':', 1)
+            else:
+                username = userinfo
+                password = ''
 
         if username:
-            headers["Proxy-Authorization"] = (username, password)
+            credentials = "%s:%s" % (username, password or '')
+            token = base64.b64encode(credentials)
+            headers["Proxy-Authorization"] = "Basic %s" % token
 
         return headers

@@ -89,34 +89,49 @@ def resolve_routing_policy(hostname, routes):
     """
 
     print(hostname)
-    proxy_map, policy = routes.get(hostname,('127.0.0.1:9000','round-robin'))
+    proxy_map, policy = routes.get(hostname, (None, 'round-robin'))
     print proxy_map
     print policy
 
-    proxy_host = ''
-    proxy_port = '9000'
+    proxy_host = None
+    proxy_port = None
+
+    if proxy_map is None:
+        print("[Proxy] No mapping found for hostname {}".format(hostname))
+        return None, None
+
     if isinstance(proxy_map, list):
         if len(proxy_map) == 0:
-            print("[Proxy] Emtpy resolved routing of hostname {}".format(hostname))
-            print "Empty proxy_map result"
             # TODO: implement the error handling for non mapped host
             #       the policy is design by team, but it can be 
             #       basic default host in your self-defined system
             # Use a dummy host to raise an invalid connection
-            proxy_host = '127.0.0.1'
-            proxy_port = '9000'
-        elif len(value) == 1:
-            proxy_host, proxy_port = proxy_map[0].split(":", 2)
         #elif: # apply the policy handling 
         #   proxy_map
         #   policy
+            print("[Proxy] Empty resolved routing of hostname {}".format(hostname))
+            return None, None
+        elif len(proxy_map) == 1:
+            proxy_host, proxy_port = proxy_map[0].split(":", 1)
+            proxy_host = proxy_host.strip()
+            proxy_port = proxy_port.strip()
         else:
-            # Out-of-handle mapped host
-            proxy_host = '127.0.0.1'
-            proxy_port = '9000'
+            target = proxy_map[0]
+            if policy == 'round-robin':
+                index = _ROUND_ROBIN_STATE.get(hostname, 0)
+                target = proxy_map[index % len(proxy_map)]
+                _ROUND_ROBIN_STATE[hostname] = index + 1
+            elif policy == 'fallback':
+                # Prefer the first available backend
+                target = proxy_map[0]
+            proxy_host, proxy_port = target.split(":", 1)
+            proxy_host = proxy_host.strip()
+            proxy_port = proxy_port.strip()
     else:
-        print("[Proxy] resolve route of hostname {} is a singulair to".format(hostname))
-        proxy_host, proxy_port = proxy_map.split(":", 2)
+        print("[Proxy] resolve route of hostname {} is a singular".format(hostname))
+        proxy_host, proxy_port = proxy_map.split(":", 1)
+        proxy_host = proxy_host.strip()
+        proxy_port = proxy_port.strip()
 
     return proxy_host, proxy_port
 
@@ -199,6 +214,12 @@ def run_proxy(ip, port, routes):
             #        using multi-thread programming with the
             #        provided handle_client routine
             #
+            client_thread = threading.Thread(
+                target=handle_client,
+                args=(ip, port, conn, addr, routes)
+            )
+            client_thread.daemon = True
+            client_thread.start()
     except socket.error as e:
       print("Socket error: {}".format(e))
 
