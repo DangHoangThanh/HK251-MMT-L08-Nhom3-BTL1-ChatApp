@@ -116,7 +116,6 @@ class HttpAdapter:
 
         # Handle the request
         msg = conn.recv(1024).decode()
-        print("debug hey", msg)
         req.prepare(msg, routes)
 
         # Handle request hook

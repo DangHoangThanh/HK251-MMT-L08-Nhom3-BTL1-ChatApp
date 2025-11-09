@@ -90,7 +90,6 @@ def run_backend(ip, port, routes):
             #        using multi-thread programming with the
             #        provided handle_client routine
             #
-            print "run_backend"
             # new thread for the connection
             client_thread = threading.Thread(
                 target=handle_client, 

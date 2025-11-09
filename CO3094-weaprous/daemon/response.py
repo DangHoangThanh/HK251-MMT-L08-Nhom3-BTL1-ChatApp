@@ -249,7 +249,7 @@ class Response():
                 "Cache-Control": "no-cache",
                 "Content-Type": "{}".format(self.headers['Content-Type']),
                 "Content-Length": "{}".format(len(self._content)),
-#                "Cookie": "{}".format(reqhdr.get("Cookie", "sessionid=xyz789")), #dummy cooki
+               "Cookie": "{}".format(reqhdr.get("Cookie", "sessionid=xyz789")), #dummy cooki
         #
         # TODO prepare the request authentication
         #
@@ -268,12 +268,13 @@ class Response():
             #        header from the provied headers
             #
 
-        if getattr(request, 'auth', None):
-            headers['Authorization'] = request.auth
-
-        # Set-Cookie response
-        if hasattr(request, 'cookies') and request.cookies:
-            headers['Set-Cookie'] = request.build_cookie_header()
+        # Grab and apply extra headers from hook response
+        hook_payload = getattr(request, 'hook_response', None)
+        if hook_payload is not None:
+            # hook response is tuple of length 3 => grab header from 3rd element
+            if isinstance(hook_payload, tuple) and len(hook_payload) == 3:
+                    extra_headers = hook_payload[2]
+                    headers.update(extra_headers)
             
         # Build status line from response
         status_line = "{} {} {}\r\n".format(
@@ -281,7 +282,6 @@ class Response():
             self.status_code, 
             self.reason 
         )
-        print("debug hey ",status_line)
         formatted_headers = []
         
         # Format each header pair
@@ -334,24 +334,37 @@ class Response():
             status_code = 200
             body_content = hook_payload
             
-            # tuple status, body
-            if isinstance(hook_payload, tuple) and len(hook_payload) == 2:
-                status_code, body_content = hook_payload
+            # Main case: tuple status, body
+            if isinstance(hook_payload, tuple):
+                if len(hook_payload) == 2:
+                    status_code, body_content = hook_payload
+                elif len(hook_payload) == 3:
+                    status_code = hook_payload[0]
+                    body_content = hook_payload[1]
+                    # Hook response 3rd element should be extra headers
+                    # extra headers are handled in build response header
 
             # int only
             if isinstance(body_content, int) and hook_payload is body_content:
                 status_code = body_content
                 body_content = ''
 
+            # json
             if isinstance(body_content, (dict, list)):
                 body_bytes = json.dumps(body_content)
                 self.headers['Content-Type'] = 'application/json'
+            
+            # no content    
             elif body_content is None:
                 body_bytes = ''
                 self.headers['Content-Type'] = 'text/plain'
+                
+            # str already    
             elif isinstance(body_content, (str, bytes)):
                 body_bytes = body_content
                 self.headers['Content-Type'] = 'text/plain'
+                
+            # fallback    
             else:
                 body_bytes = str(body_content)
                 self.headers['Content-Type'] = 'text/plain'
@@ -362,7 +375,7 @@ class Response():
             self._content = body_bytes
             self.status_code = status_code
             self.reason = STATUS_REASONS.get(status_code, "Unknown Status")
-            self.headers['Content-Length'] = str(len(body_bytes))
+            # header only affected here
             self._header = self.build_response_header(request)
             return self._header + body_bytes
 

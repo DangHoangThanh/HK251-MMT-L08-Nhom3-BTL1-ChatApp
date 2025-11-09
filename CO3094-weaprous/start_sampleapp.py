@@ -35,6 +35,22 @@ PORT = 8000  # Default port
 
 app = WeApRous()
 
+@app.route('/index.html', methods=['GET'])
+def serve_index(headers,body):
+    """
+    Handle GET to '/'
+
+    Serve index.html if auth=true present in header cookie
+
+    Else return 401 Unauthorized
+    
+    """
+    is_authenticated = headers.get('cookie')  == "auth=true"
+    
+    if not is_authenticated:
+        return (401,"User not logged in")
+
+
 @app.route('/login', methods=['POST'])
 def login(headers="guest", body="anonymous"):
     """
@@ -47,6 +63,12 @@ def login(headers="guest", body="anonymous"):
     :param body (str): The request body or login payload.
     """
     print "[SampleApp] Logging in {} to {}".format(headers, body)
+    """
+    Handle login
+
+    If good credentials, response with Set-Cookie auth=true
+    
+    """
     parsed_data= parse_qs(body)
     
     username = None
@@ -57,10 +79,20 @@ def login(headers="guest", body="anonymous"):
     if parsed_data.get('password'):
         password = parsed_data['password'][0]
     
+    res_status = 200
+    res_body = ""
+    res_headers = {}
+    
     if username == "admin" and password == "password":
-        return 200
+        res_status = 200
+        res_body = "Login Successful"
+        res_headers = {"Set-Cookie":"auth=true"}
     else:
-        return 401
+        res_status = 401
+        res_body = "Login Failed"
+    
+    return (res_status, res_body, res_headers)
+
 
 @app.route('/hello', methods=['PUT'])
 def hello(headers, body):
@@ -74,6 +106,7 @@ def hello(headers, body):
     :param body (str): The request body or message payload.
     """
     print "[SampleApp] ['PUT'] Hello in {} to {}".format(headers, body)
+    return 200
 
 if __name__ == "__main__":
     # Parse command-line arguments to configure server IP and port
