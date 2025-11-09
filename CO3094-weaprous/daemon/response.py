@@ -28,6 +28,21 @@ from .dictionary import CaseInsensitiveDict
 
 BASE_DIR = ""
 
+STATUS_REASONS = {
+    200: "OK",
+    201: "Created",
+    204: "No Content",
+    301: "Moved Permanently",
+    302: "Found",
+    400: "Bad Request",
+    401: "Unauthorized",
+    403: "Forbidden",
+    404: "Not Found",
+    500: "Internal Server Error",
+    502: "Bad Gateway",
+    503: "Service Unavailable",
+}
+
 class Response():   
     """The :class:`Response <Response>` object, which contains a
     server's response to an HTTP request.
@@ -313,14 +328,17 @@ class Response():
         :rtype bytes: complete HTTP response using prepared headers and content.
         """
 
+        # Parse and return hook response if hook response
         hook_payload = getattr(request, 'hook_response', None)
         if hook_payload is not None:
             status_code = 200
             body_content = hook_payload
-
+            
+            # tuple status, body
             if isinstance(hook_payload, tuple) and len(hook_payload) == 2:
                 status_code, body_content = hook_payload
 
+            # int only
             if isinstance(body_content, int) and hook_payload is body_content:
                 status_code = body_content
                 body_content = ''
@@ -343,7 +361,7 @@ class Response():
 
             self._content = body_bytes
             self.status_code = status_code
-            self.reason = "OK"
+            self.reason = STATUS_REASONS.get(status_code, "Unknown Status")
             self.headers['Content-Length'] = str(len(body_bytes))
             self._header = self.build_response_header(request)
             return self._header + body_bytes
@@ -374,6 +392,7 @@ class Response():
             return self.build_notfound()
 
         self._content = content
+        # default values
         self.status_code = 200
         self.reason = "OK"
         self.headers['Content-Length'] = str(content_length)

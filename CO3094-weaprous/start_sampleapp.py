@@ -27,6 +27,7 @@ and can be configured via command-line arguments.
 import json
 import socket
 import argparse
+from urlparse import parse_qs
 
 from daemon.weaprous import WeApRous
 
@@ -46,7 +47,20 @@ def login(headers="guest", body="anonymous"):
     :param body (str): The request body or login payload.
     """
     print "[SampleApp] Logging in {} to {}".format(headers, body)
-    return(200)
+    parsed_data= parse_qs(body)
+    
+    username = None
+    if parsed_data.get('username'):
+        username = parsed_data['username'][0]
+        
+    password = None
+    if parsed_data.get('password'):
+        password = parsed_data['password'][0]
+    
+    if username == "admin" and password == "password":
+        return 200
+    else:
+        return 401
 
 @app.route('/hello', methods=['PUT'])
 def hello(headers, body):
@@ -60,7 +74,6 @@ def hello(headers, body):
     :param body (str): The request body or message payload.
     """
     print "[SampleApp] ['PUT'] Hello in {} to {}".format(headers, body)
-    return(200)
 
 if __name__ == "__main__":
     # Parse command-line arguments to configure server IP and port
