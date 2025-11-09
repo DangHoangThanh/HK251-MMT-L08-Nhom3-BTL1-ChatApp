@@ -17,6 +17,8 @@ daemon.request
 This module provides a Request object to manage and persist 
 request settings (cookies, auth, proxies).
 """
+import base64
+import json
 from .dictionary import CaseInsensitiveDict
 
 class Request():
@@ -96,6 +98,11 @@ class Request():
         self.method, self.path, self.version = self.extract_request_line(request)
         print("[Request] {} path {} version {}".format(self.method, self.path, self.version))
 
+        header_section, separator, body_section = request.partition('\r\n\r\n')
+        if not separator:
+            header_section = request
+            body_section = ''
+
         #
         # @bksysnet Preapring the webapp hook with WeApRous instance
         # The default behaviour with HTTP server is empty routed
@@ -116,10 +123,36 @@ class Request():
             #
             #  TODO: implement the cookie function here
             #        by parsing the header            #
+            
+        self.headers = self.prepare_headers(header_section)
+        self.body = body_section
+
+        self.cookies = self._parse_cookie_header(cookies)
+
+        if self.cookies:
+            self.prepare_cookies(self._format_cookie_header(self.cookies))
 
         return
 
     def prepare_body(self, data, files, json=None):
+        body = ''
+        if json is not None:
+            try:
+                body = json.dumps(json)
+            except (TypeError, ValueError):
+                body = ''
+        elif data is not None:
+            if isinstance(data, (str, bytes)):
+                body = data
+            elif isinstance(data, dict):
+                body = "&".join([
+                    "{}={}".format(str(key), str(value)) for key, value in data.items()
+                ])
+            else:
+                body = str(data)
+        elif files:
+            body = str(files)
+
         self.prepare_content_length(self.body)
         self.body = body
         #
@@ -135,6 +168,18 @@ class Request():
         # TODO prepare the request authentication
         #
 	# self.auth = ...
+        if body is None:
+            length = 0
+            encoded_body = ''
+        elif isinstance(body, (str, bytes)):
+            encoded_body = body
+            length = len(encoded_body)
+        else:
+            encoded_body = str(body)
+            length = len(encoded_body)
+
+        self.headers["Content-Length"] = str(length)
+        self.body = encoded_body
         return
 
 
@@ -143,7 +188,52 @@ class Request():
         # TODO prepare the request authentication
         #
 	# self.auth = ...
+        if not auth:
+            return
+
+        if isinstance(auth, (str, bytes)):
+            token = auth
+        elif isinstance(auth, tuple) and len(auth) == 2:
+            username, password = auth
+            credentials = "%s:%s" % (username, password)
+            token = "Basic %s" % base64.b64encode(credentials)
+        else:
+            token = str(auth)
+
+        self.auth = token
+        self.headers["Authorization"] = token
         return
 
     def prepare_cookies(self, cookies):
             self.headers["Cookie"] = cookies
+
+
+    def _parse_cookie_header(self, cookies_header):
+        cookies = CaseInsensitiveDict()
+        if not cookies_header:
+            return cookies
+
+        if isinstance(cookies_header, (str, bytes)):
+            cookie_pairs = cookies_header.split(';')
+        else:
+            cookie_pairs = cookies_header
+
+        for pair in cookie_pairs:
+            if not pair:
+                continue
+            if '=' not in pair:
+                continue
+            key, value = pair.split('=', 1)
+            cookies[key.strip()] = value.strip()
+        return cookies
+
+    def _format_cookie_header(self, cookies):
+        if not cookies:
+            return ''
+        segments = []
+        for key, value in cookies.items():
+            segments.append("{}={}".format(key, value))
+        return '; '.join(segments)
+
+    def build_cookie_header(self):
+        return self._format_cookie_header(self.cookies)

@@ -24,6 +24,16 @@ from .request import Request
 from .response import Response
 from .dictionary import CaseInsensitiveDict
 
+
+def get_encoding_from_headers(headers):
+    encoding = None
+    if headers:
+        encoding = headers.get('content-type') or headers.get('Content-Type')
+
+    if encoding and 'charset=' in encoding:
+        return encoding.split('charset=', 1)[1].strip()
+    return 'utf-8'
+
 class HttpAdapter:
     """
     A mutable :class:`HTTP adapter <HTTP adapter>` for managing client connections
@@ -109,10 +119,17 @@ class HttpAdapter:
         # Handle request hook
         if req.hook:
             print("[HttpAdapter] hook in route-path METHOD {} PATH {}".format(req.hook._route_path,req.hook._route_methods))
-            req.hook(headers = "bksysnet",body = "get in touch")
             #
             # TODO: handle for App hook here
             #
+            try:
+                # EXECUTE HOOK
+                hook_response = req.hook(headers=req.headers, body=req.body)
+                # Set hook_response for build_response
+                req.hook_response = hook_response
+            except Exception as exc:
+                req.hook_response = None
+                print("[HttpAdapter] Error executing hook: %s" % str(exc))
 
         # Build response
         response = resp.build_response(req)

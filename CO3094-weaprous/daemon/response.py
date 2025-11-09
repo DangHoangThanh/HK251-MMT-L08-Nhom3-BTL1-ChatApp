@@ -23,9 +23,25 @@ The current version supports MIME type detection, content loading and header for
 import datetime
 import os
 import mimetypes
+import json
 from .dictionary import CaseInsensitiveDict
 
 BASE_DIR = ""
+
+STATUS_REASONS = {
+    200: "OK",
+    201: "Created",
+    204: "No Content",
+    301: "Moved Permanently",
+    302: "Found",
+    400: "Bad Request",
+    401: "Unauthorized",
+    403: "Forbidden",
+    404: "Not Found",
+    500: "Internal Server Error",
+    502: "Bad Gateway",
+    503: "Service Unavailable",
+}
 
 class Response():   
     """The :class:`Response <Response>` object, which contains a
@@ -201,6 +217,15 @@ class Response():
             #  TODO: implement the step of fetch the object file
             #        store in the return value of content
             #
+        # init blank content
+        content = None
+        try:
+            with open(filepath, 'rb') as f:
+                content = f.read()
+        except IOError:
+            print("[Response] ERROR: File not found at location {}".format(filepath))
+            return None, None
+
         return len(content), content
 
 
@@ -224,7 +249,7 @@ class Response():
                 "Cache-Control": "no-cache",
                 "Content-Type": "{}".format(self.headers['Content-Type']),
                 "Content-Length": "{}".format(len(self._content)),
-#                "Cookie": "{}".format(reqhdr.get("Cookie", "sessionid=xyz789")), #dummy cooki
+                "Cookie": "{}".format(reqhdr.get("Cookie", "sessionid=xyz789")), #dummy cooki
         #
         # TODO prepare the request authentication
         #
@@ -242,6 +267,32 @@ class Response():
             #  TODO: implement the header building to create formated
             #        header from the provied headers
             #
+
+        # Grab and apply extra headers from hook response
+        hook_payload = getattr(request, 'hook_response', None)
+        if hook_payload is not None:
+            # hook response is tuple of length 3 => grab header from 3rd element
+            if isinstance(hook_payload, tuple) and len(hook_payload) == 3:
+                    extra_headers = hook_payload[2]
+                    headers.update(extra_headers)
+            
+        # Build status line from response
+        status_line = "{} {} {}\r\n".format(
+            request.version,
+            self.status_code, 
+            self.reason 
+        )
+        formatted_headers = []
+        
+        # Format each header pair
+        for key, value in headers.items():
+            # Standard HTTP format: Key: Value\r\n
+            formatted_headers.append("{}: {}\r\n".format(key, value))
+        
+        header_string = "".join(formatted_headers)
+        
+        # Build the final string: Status Line + Headers + required blank line (\r\n)
+        fmt_header = status_line + header_string + "\r\n"
         #
         # TODO prepare the request authentication
         #
@@ -277,6 +328,57 @@ class Response():
         :rtype bytes: complete HTTP response using prepared headers and content.
         """
 
+        # Parse and return hook response if hook response
+        hook_payload = getattr(request, 'hook_response', None)
+        if hook_payload is not None:
+            status_code = 200
+            body_content = hook_payload
+            
+            # Main case: tuple status, body
+            if isinstance(hook_payload, tuple):
+                if len(hook_payload) == 2:
+                    status_code, body_content = hook_payload
+                elif len(hook_payload) == 3:
+                    status_code = hook_payload[0]
+                    body_content = hook_payload[1]
+                    # Hook response 3rd element should be extra headers
+                    # extra headers are handled in build response header
+
+            # int only
+            if isinstance(body_content, int) and hook_payload is body_content:
+                status_code = body_content
+                body_content = ''
+
+            # json
+            if isinstance(body_content, (dict, list)):
+                body_bytes = json.dumps(body_content)
+                self.headers['Content-Type'] = 'application/json'
+            
+            # no content    
+            elif body_content is None:
+                body_bytes = ''
+                self.headers['Content-Type'] = 'text/plain'
+                
+            # str already    
+            elif isinstance(body_content, (str, bytes)):
+                body_bytes = body_content
+                self.headers['Content-Type'] = 'text/plain'
+                
+            # fallback    
+            else:
+                body_bytes = str(body_content)
+                self.headers['Content-Type'] = 'text/plain'
+
+            if not isinstance(body_bytes, (str, bytes)):
+                body_bytes = str(body_bytes)
+
+            self._content = body_bytes
+            self.status_code = status_code
+            self.reason = STATUS_REASONS.get(status_code, "Unknown Status")
+            # header only affected here
+            self._header = self.build_response_header(request)
+            return self._header + body_bytes
+
         path = request.path
 
         mime_type = self.get_mime_type(path)
@@ -293,9 +395,20 @@ class Response():
         # TODO: add support objects
         #
         else:
+            try:
+                base_dir = self.prepare_content_type(mime_type=mime_type)
+            except ValueError:
+                return self.build_notfound()
+
+        content_length, content = self.build_content(path, base_dir)
+        if content is None:
             return self.build_notfound()
 
-        c_len, self._content = self.build_content(path, base_dir)
+        self._content = content
+        # default values
+        self.status_code = 200
+        self.reason = "OK"
+        self.headers['Content-Length'] = str(content_length)
         self._header = self.build_response_header(request)
 
         return self._header + self._content
