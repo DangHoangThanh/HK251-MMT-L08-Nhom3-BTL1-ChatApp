@@ -23,8 +23,6 @@ Request and Response objects to handle client-server communication.
 from .request import Request
 from .response import Response
 from .dictionary import CaseInsensitiveDict
-import base64
-from urlparse import urlparse
 
 
 def get_encoding_from_headers(headers):
@@ -242,25 +240,9 @@ class HttpAdapter:
         #       username, password =...
         # we provide dummy auth here
         #
-        # if not proxy:
-        #     return headers
+        username, password = ("user1", "password")
 
-        # parsed = urlparse(proxy)
-
-        # username = parsed.username
-        # password = parsed.password
-
-        # if username is None and '@' in parsed.netloc:
-        #     userinfo = parsed.netloc.split('@', 1)[0]
-        #     if ':' in userinfo:
-        #         username, password = userinfo.split(':', 1)
-        #     else:
-        #         username = userinfo
-        #         password = ''
-
-        # if username:
-        #     credentials = "%s:%s" % (username, password or '')
-        #     token = base64.b64encode(credentials)
-        #     headers["Proxy-Authorization"] = "Basic %s" % token
+        if username:
+            headers["Proxy-Authorization"] = (username, password)
 
         return headers

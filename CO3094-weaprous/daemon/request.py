@@ -109,60 +109,65 @@ class Request():
         #
         # TODO manage the webapp hook in this mounting point
         #
-        if routes:
+        
+        if not routes == {}:
             self.routes = routes
             self.hook = routes.get((self.method, self.path))
             #
             # self.hook manipulation goes here
             # ...
             #
-            
+
+        self.headers = self.prepare_headers(request)
+        cookies = self.headers.get('cookie', '')
             #
             #  TODO: implement the cookie function here
             #        by parsing the header            #
+            
         self.headers = self.prepare_headers(header_section)
         self.body = body_section
 
-        cookies_header = self.headers.get('Cookie', '')
-        self.cookies = self._parse_cookie_header(cookies_header)
+        self.cookies = self._parse_cookie_header(cookies)
 
         if self.cookies:
             self.prepare_cookies(self._format_cookie_header(self.cookies))
 
-        return self
+        return
 
-    def prepare_body(self, data, files, json_data=None):
-        payload = ''
-        if json_data is not None:
+    def prepare_body(self, data, files, json=None):
+        body = ''
+        if json is not None:
             try:
-                payload = json.dumps(json_data)
+                body = json.dumps(json)
             except (TypeError, ValueError):
-                payload = ''
+                body = ''
         elif data is not None:
             if isinstance(data, (str, bytes)):
-                payload = data
+                body = data
             elif isinstance(data, dict):
-                payload = "&".join([
+                body = "&".join([
                     "{}={}".format(str(key), str(value)) for key, value in data.items()
                 ])
             else:
-                payload = str(data)
+                body = str(data)
         elif files:
-            payload = str(files)
+            body = str(files)
 
-        self.body = payload
         self.prepare_content_length(self.body)
+        self.body = body
         #
         # TODO prepare the request authentication
         #
-        return self
+	# self.auth = ...
+        return
 
 
     def prepare_content_length(self, body):
+        self.headers["Content-Length"] = "0"
         #
         # TODO prepare the request authentication
         #
-    # self.auth = ...
+	# self.auth = ...
         if body is None:
             length = 0
             encoded_body = ''
@@ -175,16 +180,16 @@ class Request():
 
         self.headers["Content-Length"] = str(length)
         self.body = encoded_body
-        return self
+        return
 
 
     def prepare_auth(self, auth, url=""):
         #
         # TODO prepare the request authentication
         #
-    # self.auth = ...
+	# self.auth = ...
         if not auth:
-            return self
+            return
 
         if isinstance(auth, (str, bytes)):
             token = auth
@@ -197,7 +202,7 @@ class Request():
 
         self.auth = token
         self.headers["Authorization"] = token
-        return self
+        return
 
     def prepare_cookies(self, cookies):
             self.headers["Cookie"] = cookies
