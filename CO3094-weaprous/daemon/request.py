@@ -20,6 +20,7 @@ request settings (cookies, auth, proxies).
 import base64
 import json
 from .dictionary import CaseInsensitiveDict
+from daemon.utils import get_auth_from_url
 
 class Request():
     """The fully mutable "class" `Request <Request>` object,
@@ -124,7 +125,6 @@ class Request():
             #  TODO: implement the cookie function here
             #        by parsing the header            #
             
-        self.headers = self.prepare_headers(header_section)
         self.body = body_section
 
         self.cookies = self._parse_cookie_header(cookies)
@@ -188,20 +188,10 @@ class Request():
         # TODO prepare the request authentication
         #
 	# self.auth = ...
-        if not auth:
-            return
-
-        if isinstance(auth, (str, bytes)):
-            token = auth
-        elif isinstance(auth, tuple) and len(auth) == 2:
-            username, password = auth
-            credentials = "%s:%s" % (username, password)
-            token = "Basic %s" % base64.b64encode(credentials)
-        else:
-            token = str(auth)
-
-        self.auth = token
-        self.headers["Authorization"] = token
+ 
+        #NOT USED
+        self.auth = get_auth_from_url(url)
+        self.headers["Authorization"] = self.auth
         return
 
     def prepare_cookies(self, cookies):
