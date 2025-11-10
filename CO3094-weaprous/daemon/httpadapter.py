@@ -35,6 +35,16 @@ def get_encoding_from_headers(headers):
         return encoding.split('charset=', 1)[1].strip()
     return 'utf-8'
 
+
+def get_encoding_from_headers(headers):
+    encoding = None
+    if headers:
+        encoding = headers.get('content-type') or headers.get('Content-Type')
+
+    if encoding and 'charset=' in encoding:
+        return encoding.split('charset=', 1)[1].strip()
+    return 'utf-8'
+
 class HttpAdapter:
     """
     A mutable :class:`HTTP adapter <HTTP adapter>` for managing client connections
