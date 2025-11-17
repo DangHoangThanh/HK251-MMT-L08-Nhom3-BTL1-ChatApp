@@ -43,7 +43,6 @@ class Request():
         "method",
         "url",
         "headers",
-        "body",
         "reason",
         "cookies",
         "body",
@@ -82,9 +81,15 @@ class Request():
 
         return method, path, version
              
-    def prepare_headers(self, request):
-        """Prepares the given HTTP headers."""
-        lines = request.split('\r\n')
+    def prepare_headers(self, header_data):
+        """
+        Prepares the given HTTP headers.
+        
+        :param header_data: (str) Raw HTTP header data.
+        :rtype: dict
+        """
+        
+        lines = header_data.split('\r\n')
         headers = {}
         for line in lines[1:]:
             if ': ' in line:
@@ -119,80 +124,22 @@ class Request():
             # ...
             #
 
-        self.headers = self.prepare_headers(request)
+        self.headers = self.prepare_headers(header_section)
+            
+        self.body = body_section
+
         cookies = self.headers.get('cookie', '')
             #
             #  TODO: implement the cookie function here
             #        by parsing the header            #
-            
-        self.body = body_section
-
         self.cookies = self._parse_cookie_header(cookies)
 
-        if self.cookies:
-            self.prepare_cookies(self._format_cookie_header(self.cookies))
+        # Thừa
+        # if self.cookies:
+        #     self.prepare_cookies(self._format_cookie_header(self.cookies))
 
         return
 
-    def prepare_body(self, data, files, json=None):
-        body = ''
-        if json is not None:
-            try:
-                body = json.dumps(json)
-            except (TypeError, ValueError):
-                body = ''
-        elif data is not None:
-            if isinstance(data, (str, bytes)):
-                body = data
-            elif isinstance(data, dict):
-                body = "&".join([
-                    "{}={}".format(str(key), str(value)) for key, value in data.items()
-                ])
-            else:
-                body = str(data)
-        elif files:
-            body = str(files)
-
-        self.prepare_content_length(self.body)
-        self.body = body
-        #
-        # TODO prepare the request authentication
-        #
-	# self.auth = ...
-        return
-
-
-    def prepare_content_length(self, body):
-        self.headers["Content-Length"] = "0"
-        #
-        # TODO prepare the request authentication
-        #
-	# self.auth = ...
-        if body is None:
-            length = 0
-            encoded_body = ''
-        elif isinstance(body, (str, bytes)):
-            encoded_body = body
-            length = len(encoded_body)
-        else:
-            encoded_body = str(body)
-            length = len(encoded_body)
-
-        self.headers["Content-Length"] = str(length)
-        self.body = encoded_body
-        return
-
-
-    def prepare_auth(self, auth, url=""):
-        #
-        # TODO prepare the request authentication
-        #
-	# self.auth = ...
- 
-        #NOT USED
-        self.auth = get_auth_from_url(url)
-        self.headers["Authorization"] = self.auth
-        return
 
     def prepare_cookies(self, cookies):
             self.headers["Cookie"] = cookies
@@ -217,13 +164,13 @@ class Request():
             cookies[key.strip()] = value.strip()
         return cookies
 
-    def _format_cookie_header(self, cookies):
-        if not cookies:
-            return ''
-        segments = []
-        for key, value in cookies.items():
-            segments.append("{}={}".format(key, value))
-        return '; '.join(segments)
+    # def _format_cookie_header(self, cookies):
+    #     if not cookies:
+    #         return ''
+    #     segments = []
+    #     for key, value in cookies.items():
+    #         segments.append("{}={}".format(key, value))
+    #     return '; '.join(segments)
 
-    def build_cookie_header(self):
-        return self._format_cookie_header(self.cookies)
+    # def build_cookie_header(self):
+    #     return self._format_cookie_header(self.cookies)

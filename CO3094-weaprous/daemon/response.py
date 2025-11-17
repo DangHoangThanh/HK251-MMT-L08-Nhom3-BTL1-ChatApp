@@ -42,6 +42,7 @@ STATUS_REASONS = {
     502: "Bad Gateway",
     503: "Service Unavailable",
 }
+    
 
 class Response():   
     """The :class:`Response <Response>` object, which contains a
@@ -83,7 +84,6 @@ class Response():
         "url",
         "history",
         "encoding",
-        "reason",
         "cookies",
         "elapsed",
         "request",
@@ -165,6 +165,10 @@ class Response():
         
         base_dir = ""
 
+        # Lấy đường dẫn tuyệt đối đến thư mục chứa file response.py (tức là daemon/)
+        _DAEMON_DIR = os.path.dirname(os.path.abspath(__file__))
+        # Lấy đường dẫn đến thư mục cha (tức là thư mục gốc của dự án)
+        base_dir = os.path.dirname(_DAEMON_DIR)
         # Processing mime_type based on main_type and sub_type
         main_type, sub_type = mime_type.split('/', 1)
         print("[Response] processing MIME main_type={} sub_type={}".format(main_type,sub_type))
@@ -175,7 +179,7 @@ class Response():
             elif sub_type == 'html':
                 base_dir = BASE_DIR+"www/"
             else:
-                handle_text_other(sub_type)
+                print(f"Do not support: {sub_type} of text/")
         elif main_type == 'image':
             base_dir = BASE_DIR+"static/"
             self.headers['Content-Type']='image/{}'.format(sub_type)
@@ -200,7 +204,7 @@ class Response():
         return base_dir
 
 
-    def build_content(self, path, base_dir):
+    def build_content(self, path, base_dir, request):
         """
         Loads the objects file from storage space.
 
@@ -226,6 +230,14 @@ class Response():
             print("[Response] ERROR: File not found at location {}".format(filepath))
             return None, None
 
+        if path.endswith('.html'):
+            try:
+                # Lấy username mà HttpAdapter đã gán
+                username = getattr(request, 'username', 'Guest') 
+                content = content.decode('utf-8').replace('{{USERNAME}}', username).encode('utf-8')
+            except Exception as e:
+                print(f"[Response] Loi khi ca nhan hoa file: {e}")
+        
         return len(content), content
 
 
@@ -249,11 +261,6 @@ class Response():
                 "Cache-Control": "no-cache",
                 "Content-Type": "{}".format(self.headers['Content-Type']),
                 "Content-Length": "{}".format(len(self._content)),
-                "Cookie": "{}".format(reqhdr.get("Cookie", "sessionid=xyz789")), #dummy cooki
-        #
-        # TODO prepare the request authentication
-        #
-	# self.auth = ...
                 "Date": "{}".format(datetime.datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")),
                 "Max-Forward": "10",
                 "Pragma": "no-cache",
@@ -267,6 +274,8 @@ class Response():
             #  TODO: implement the header building to create formated
             #        header from the provied headers
             #
+
+        headers.update(rsphdr)
 
         # Grab and apply extra headers from hook response
         hook_payload = getattr(request, 'hook_response', None)
@@ -375,40 +384,52 @@ class Response():
             self._content = body_bytes
             self.status_code = status_code
             self.reason = STATUS_REASONS.get(status_code, "Unknown Status")
-            # header only affected here
             self._header = self.build_response_header(request)
-            return self._header + body_bytes
+            return self._header + body_bytes.encode('utf-8')
 
         path = request.path
-
         mime_type = self.get_mime_type(path)
-        print("[Response] {} path {} mime_type {}".format(request.method, request.path, mime_type))
+        
+        try:
+            base_dir = self.prepare_content_type(mime_type=mime_type)
+        except ValueError: # MIME type không hỗ trợ
+             base_dir = "www/" # Thử fallback về www
+             path = "/404.html" # Yêu cầu phục vụ file 404
+             if self.status_code is None: # Gán 404 nếu chưa có lỗi
+                self.status_code = 404
+                self.reason = "Not Found"
 
-        base_dir = ""
-
-        #If HTML, parse and serve embedded objects
-        if path.endswith('.html') or mime_type == 'text/html':
-            base_dir = self.prepare_content_type(mime_type = 'text/html')
-        elif mime_type == 'text/css':
-            base_dir = self.prepare_content_type(mime_type = 'text/css')
-        #
-        # TODO: add support objects
-        #
-        else:
-            try:
-                base_dir = self.prepare_content_type(mime_type=mime_type)
-            except ValueError:
-                return self.build_notfound()
-
-        content_length, content = self.build_content(path, base_dir)
+        # Lấy nội dung file (Lần thử 1)
+        content_length, content = self.build_content(path, base_dir, request)
+        
+        # KIỂM TRA NẾU FILE KHÔNG TỒN TẠI
         if content is None:
-            return self.build_notfound()
+            # Assign 404 status if not already set
+            if self.status_code is None: 
+                self.status_code = 404
+                self.reason = "Not Found"
+            
+            # Thử tìm file 404.html (Lần thử 2)
+            print(f"[Response] Khong tim thay file: {path}. Phuc vu /404.html")
+            path_404 = '/404.html'
+            base_dir_404 = self.prepare_content_type('text/html')
+            content_length, content = self.build_content(path_404, base_dir_404, request)
+
+            # ErrorL 404.html does not exist
+            if content is None:
+                print("[Response] Error: Khong tim thay file 404.html.")
+                return self.build_notfound() 
+
+        # Assign 200 OK if no error status set
+        if self.status_code is None:
+            self.status_code = 200
+            self.reason = "OK"
+        else:
+            self.reason = STATUS_REASONS.get(self.status_code, "Unknown Status")
 
         self._content = content
-        # default values
-        self.status_code = 200
-        self.reason = "OK"
         self.headers['Content-Length'] = str(content_length)
         self._header = self.build_response_header(request)
+        print(f"[Response] {self.status_code}-{self.reason}, Content-Length: {content_length}")
 
         return self._header + self._content

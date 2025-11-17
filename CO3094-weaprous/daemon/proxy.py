@@ -92,8 +92,8 @@ def resolve_routing_policy(hostname, routes):
 
     print(hostname)
     proxy_map, policy = routes.get(hostname,('127.0.0.1:9000','round-robin'))
-    print proxy_map
-    print policy
+    print(proxy_map)
+    print(policy)
 
     proxy_host = ''
     proxy_port = '9000'
@@ -106,7 +106,7 @@ def resolve_routing_policy(hostname, routes):
     if isinstance(proxy_map, list):
         if len(proxy_map) == 0:
             print("[Proxy] Emtpy resolved routing of hostname {}".format(hostname))
-            print "Empty proxy_map result"
+            print("Empty proxy_map result")
             # TODO: implement the error handling for non mapped host
             #       the policy is design by team, but it can be 
             #       basic default host in your self-defined system
@@ -123,9 +123,9 @@ def resolve_routing_policy(hostname, routes):
         else:
             target = proxy_map[0]
             if policy == 'round-robin':
-                index = _ROUND_ROBIN_STATE.get(hostname, 0)
+                index = ROUND_ROBIN_STATE.get(hostname, 0)
                 target = proxy_map[index % len(proxy_map)]
-                _ROUND_ROBIN_STATE[hostname] = index + 1
+                ROUND_ROBIN_STATE[hostname] = index + 1
             elif policy == 'fallback':
                 # Prefer the first available backend
                 target = proxy_map[0]
@@ -158,7 +158,7 @@ def handle_client(ip, port, conn, addr, routes):
     :params addr (tuple): client address (IP, port).
     :params routes (dict): dictionary mapping hostnames and location.
     """
-
+    # may need to increase buffer size for larger requests
     request = conn.recv(1024).decode()
 
     # Extract hostname
@@ -178,7 +178,7 @@ def handle_client(ip, port, conn, addr, routes):
         print("Not a valid integer")
 
     if resolved_host:
-        print("[Proxy] Host name {} is forwarded to {}:{}".format(hostname,resolved_host, resolved_port))
+        print("[Proxy] Host name {} is forwarded to {}:{}".format(hostname, resolved_host, resolved_port))
         response = forward_request(resolved_host, resolved_port, request)        
     else:
         response = (

@@ -1,21 +1,75 @@
 <!doctype html>
-<html>
+<html lang="vi">
 <head>
-    <title>bksysnet@hcmut welcome</title>
-
     <meta charset="utf-8" />
     <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="css/styles.css" />
+    <title>Chào mừng {{USERNAME}}!</title>
+
+    <!-- CSS cơ bản -->
+    <style>
+        body {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f2f2f2;
+            color: #333;
+        }
+        header {
+            background-color: #4CAF50;
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        header h1 {
+            margin: 0;
+            font-size: 2em;
+        }
+        main {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        main h2 {
+            color: #4CAF50;
+            margin-bottom: 20px;
+        }
+        main p {
+            font-size: 1.1em;
+        }
+        main img {
+            max-width: 80%;
+            height: auto;
+            margin-top: 20px;
+            border-radius: 10px;
+        }
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            padding: 10px;
+            color: #777;
+            font-size: 0.9em;
+        }
+    </style>
 </head>
 
 <body>
-<div>
-    <h1>bksysnet@hcmut  Domain</h1>
-    <p>This domain is for use in illustrative examples in documents.
-    </p>
-  
-       <img src="images/welcome.png" alt="bksysnet at HCMUT" width="500" height="600">  
-</div>
+    <header>
+        <h1>bksysnet@HCMUT Domain</h1>
+    </header>
+
+    <main>
+        <h2>Chào mừng, <span id="username">{{USERNAME}}</span>!</h2>
+        <p>Bạn đã đăng nhập thành công.</p>
+        <img src="images/welcome.png" alt="Welcome image" />
+    </main>
+
+    <footer>
+        &copy; 2025 HCMC University of Technology. All rights reserved.
+    </footer>
 </body>
 </html>

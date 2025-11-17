@@ -10,7 +10,8 @@
 # while attending the course
 #
 
-from urlparse import urlparse, unquote
+from urllib.parse import urlparse, unquote # Python 3
+# from urlparse import urlparse, unquote # Python 2
 
 def get_auth_from_url(url):
     """Given a url with authentication components, extract them into a tuple of

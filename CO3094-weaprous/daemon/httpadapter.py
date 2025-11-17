@@ -23,27 +23,7 @@ Request and Response objects to handle client-server communication.
 from .request import Request
 from .response import Response
 from .dictionary import CaseInsensitiveDict
-from daemon.utils import get_auth_from_url
 
-
-def get_encoding_from_headers(headers):
-    encoding = None
-    if headers:
-        encoding = headers.get('content-type') or headers.get('Content-Type')
-
-    if encoding and 'charset=' in encoding:
-        return encoding.split('charset=', 1)[1].strip()
-    return 'utf-8'
-
-
-def get_encoding_from_headers(headers):
-    encoding = None
-    if headers:
-        encoding = headers.get('content-type') or headers.get('Content-Type')
-
-    if encoding and 'charset=' in encoding:
-        return encoding.split('charset=', 1)[1].strip()
-    return 'utf-8'
 
 class HttpAdapter:
     """
@@ -101,17 +81,13 @@ class HttpAdapter:
         #: Response
         self.response = Response()
 
+
     def handle_client(self, conn, addr, routes):
         """
-        Handle an incoming client connection.
-
-        This method reads the request from the socket, prepares the request object,
-        invokes the appropriate route handler if available, builds the response,
-        and sends it back to the client.
-
-        :param conn (socket): The client socket connection.
-        :param addr (tuple): The client's address.
-        :param routes (dict): The route mapping for dispatching requests.
+        Simplified workflow:
+        1. Read the request.
+        2. If the target is an App with a hook, run the hook.
+        3. Otherwise, return the corresponding static file.
         """
 
         # Connection handler.
@@ -123,77 +99,170 @@ class HttpAdapter:
         # Response handler
         resp = self.response
 
-        # Handle the request
-        msg = conn.recv(1024).decode()
-        req.prepare(msg, routes)
+        try:
+            ############################
+            # Phiên bản lấy HTTP chuẩn
+            ############################
 
-        # Handle request hook
-        if req.hook:
-            print("[HttpAdapter] hook in route-path METHOD {} PATH {}".format(req.hook._route_path,req.hook._route_methods))
-            #
-            # TODO: handle for App hook here
-            #
-            try:
-                # EXECUTE HOOK
-                hook_response = req.hook(headers=req.headers, body=req.body)
-                # Set hook_response for build_response
-                req.hook_response = hook_response
-            except Exception as exc:
-                req.hook_response = None
-                print("[HttpAdapter] Error executing hook: %s" % str(exc))
+            # 1. ĐỌC REQUEST (Giữ lại code đọc recv TỐT NHẤT của bạn)
+            data = b""
+            while b"\r\n\r\n" not in data:
+                chunk = conn.recv(1024)
+                if not chunk: 
+                    break
+                data += chunk
+            
+            header_data, _, body_data = data.partition(b"\r\n\r\n")
+            msg_header_only = header_data.decode('utf-8', 'ignore')
+            
+            # 2. Phân tích header (chỉ header)
+            # Dùng 1 đối tượng Request TẠM THỜI để đọc Content-Length
+            temp_req = Request()
+            temp_req.prepare(msg_header_only, routes) 
+            
+            content_length = int(temp_req.headers.get('content-length', 0))
+            
+            # 3. Đọc phần body còn lại (nếu cần)
+            while len(body_data) < content_length:
+                bytes_to_read = content_length - len(body_data)
+                chunk = conn.recv(bytes_to_read)
+                if not chunk:
+                    break
+                body_data += chunk
+                
+            # 4. Chuẩn bị lại request CHÍNH THỨC với body đầy đủ
+            msg = header_data.decode('utf-8', 'ignore') + "\r\n\r\n" + body_data.decode('utf-8', 'ignore')
+            req.prepare(msg, routes) # req.hook được gán ở đây
 
-        # Build response
-        response = resp.build_response(req)
+            if not req.method:
+                 print("[HttpAdapter] Request loi, dong ket noi.")
+                 conn.close()
+                 return
 
-        #print(response)
-        conn.sendall(response)
-        conn.close()
 
-    @property
-    def extract_cookies(self, req, resp):
-        """
-        Build cookies from the :class:`Request <Request>` headers.
+            # msg = conn.recv(4096).decode()
+            # if not msg:
+            #     print("[HttpAdapter] Client disconnected.")
+            #     conn.close()
+            #     return
 
-        :param req:(Request) The :class:`Request <Request>` object.
-        :param resp: (Response) The res:class:`Response <Response>` object.
-        :rtype: cookies - A dictionary of cookie key-value pairs.
-        """
-        cookies = {}
-        for header in headers:
-            if header.startswith("Cookie:"):
-                cookie_str = header.split(":", 1)[1].strip()
-                for pair in cookie_str.split(";"):
-                    key, value = pair.strip().split("=")
-                    cookies[key] = value
-        return cookies
+            # req.prepare(msg, routes)
+            # if not req.method:
+            #     print("[HttpAdapter] Malformed request, closing connection.")
+            #     conn.close()
+            #     return
 
-    def build_response(self, req, resp):
-        """Builds a :class:`Response <Response>` object 
+            # 1. ƯU TIÊN HÀNG ĐẦU: WeApRous (Task 2.1 & 2.2)
+            # Nếu req.prepare tìm thấy 1 route (ví dụ /login, /register)
+            # nó sẽ gán hàm (ví dụ: hàm login) vào req.hook
+            if req.hook:
+                print(f"[HttpAdapter] Hooking to route: {req.method} {req.path}")
+                try:
+                    hook_response = req.hook(headers=req.headers, body=req.body) 
+                    
+                    # Kịch bản 1: Lỗi 401 (API trả về lỗi, ví dụ: /index.html)
+                    # (Kiểm tra xem hook_response có phải là tuple (401, ...))
+                    if isinstance(hook_response, tuple) and hook_response[0] == 401:
+                        print("[HttpAdapter] Hook tra ve 401. Dang phuc vu trang 401.html")
+                        resp.status_code = 401
+                        req.path = '/401.html' # Đổi path sang trang lỗi
+                        req.hook_response = None # Xóa hook để ép chạy logic file tĩnh
 
-        :param req: The :class:`Request <Request>` used to generate the response.
-        :param resp: The  response object.
-        :rtype: Response
-        """
-        response = Response()
+                    # Kịch bản 2: Lỗi 404 (API trả về lỗi, ví dụ: /get-peers)
+                    elif isinstance(hook_response, tuple) and hook_response[0] == 404:
+                        print("[HttpAdapter] Hook tra ve 404. Dang phuc vu trang 404.html")
+                        resp.status_code = 404
+                        req.path = '/404.html' # Đổi path sang trang lỗi
+                        req.hook_response = None # Xóa hook để ép chạy logic file tĩnh
 
-        # Set encoding.
-        response.encoding = get_encoding_from_headers(response.headers)
-        response.raw = resp
-        response.reason = response.raw.reason
+                    # Kịch bản 3: Tín hiệu Magic (Login/Index thành công)
+                    elif (isinstance(hook_response, dict) and 
+                          hook_response.get("__pass_through__") == True):
+                        # (Logic "Tín hiệu Magic" cho /index.html)
+                        req.username = hook_response.get("username")
+                        req.hook_response = None 
+                        
+                    elif (isinstance(hook_response, tuple) and len(hook_response) >= 2 and 
+                          isinstance(hook_response[1], dict) and 
+                          hook_response[1].get("__pass_through__") == True):
+                        # (Logic "Tín hiệu Magic" cho /login)
+                        req.username = hook_response[1].get("username")
+                        req.hook_response = None 
+                        if req.path == '/login':
+                            req.path = '/index.html' 
+                        if len(hook_response) == 3:
+                            resp.headers.update(hook_response[2]) # Giữ Set-Cookie
+                    
+                    # Kịch bản 4: API bình thường (trả về JSON)
+                    else:
+                        req.hook_response = hook_response 
+                    # --- KẾT THÚC SỬA LỖI 401/404 ---
 
-        if isinstance(req.url, bytes):
-            response.url = req.url.decode("utf-8")
-        else:
-            response.url = req.url
+                except Exception as exc:
+                    req.hook_response = None
+                    print(f"[HttpAdapter] Error khi chay hook: {exc}")
+            
+            # 2. FALLBACK: Phục vụ file tĩnh
+            # (Nếu không có hook, ví dụ: GET /login.html, GET /style.css)
+            else:
+                print(f"[HttpAdapter] No hook. Phuc vu file tinh: {req.path}")
+                # Không cần làm gì. 
+                # response.py sẽ tự động tìm file và gán status 200
+            
+            # 3. BUILD RESPONSE
+            response_bytes = resp.build_response(req)
+            conn.sendall(response_bytes)
 
-        # Add new cookies from the server.
-        response.cookies = extract_cookies(req)
+        except Exception as e:
+            print(f"[HttpAdapter] Loi khong ngo toi: {e}")
+        finally:
+            conn.close()
 
-        # Give the Response some context.
-        response.request = req
-        response.connection = self
+    # @property
+    # def extract_cookies(self, req, resp):
+    #     """
+    #     Build cookies from the :class:`Request <Request>` headers.
 
-        return response
+    #     :param req:(Request) The :class:`Request <Request>` object.
+    #     :param resp: (Response) The res:class:`Response <Response>` object.
+    #     :rtype: cookies - A dictionary of cookie key-value pairs.
+    #     """
+    #     cookies = {}
+    #     for header in headers:
+    #         if header.startswith("Cookie:"):
+    #             cookie_str = header.split(":", 1)[1].strip()
+    #             for pair in cookie_str.split(";"):
+    #                 key, value = pair.strip().split("=")
+    #                 cookies[key] = value
+    #     return cookies
+
+    # def build_response(self, req, resp):
+    #     """Builds a :class:`Response <Response>` object 
+
+    #     :param req: The :class:`Request <Request>` used to generate the response.
+    #     :param resp: The  response object.
+    #     :rtype: Response
+    #     """
+    #     response = Response()
+
+    #     # Set encoding.
+    #     response.encoding = get_encoding_from_headers(response.headers)
+    #     response.raw = resp
+    #     response.reason = response.raw.reason
+
+    #     if isinstance(req.url, bytes):
+    #         response.url = req.url.decode("utf-8")
+    #     else:
+    #         response.url = req.url
+
+    #     # Add new cookies from the server.
+    #     response.cookies = extract_cookies(req)
+
+    #     # Give the Response some context.
+    #     response.request = req
+    #     response.connection = self
+
+    #     return response
 
     # def get_connection(self, url, proxies=None):
         # """Returns a url connection for the given URL. 
@@ -224,38 +293,38 @@ class HttpAdapter:
         # return conn
 
 
-    def add_headers(self, request):
-        """
-        Add headers to the request.
+    # def add_headers(self, request):
+    #     """
+    #     Add headers to the request.
 
-        This method is intended to be overridden by subclasses to inject
-        custom headers. It does nothing by default.
+    #     This method is intended to be overridden by subclasses to inject
+    #     custom headers. It does nothing by default.
 
         
-        :param request: :class:`Request <Request>` to add headers to.
-        """
-        pass
+    #     :param request: :class:`Request <Request>` to add headers to.
+    #     """
+    #     pass
 
-    def build_proxy_headers(self, proxy):
-        """Returns a dictionary of the headers to add to any request sent
-        through a proxy. 
+    # def build_proxy_headers(self, proxy):
+    #     """Returns a dictionary of the headers to add to any request sent
+    #     through a proxy. 
 
-        :class:`HttpAdapter <HttpAdapter>`.
+    #     :class:`HttpAdapter <HttpAdapter>`.
 
-        :param proxy: The url of the proxy being used for this request.
-        :rtype: dict
-        """
-        headers = {}
-        #
-        # TODO: build your authentication here
-        #       username, password =...
-        # we provide dummy auth here
-        #
+    #     :param proxy: The url of the proxy being used for this request.
+    #     :rtype: dict
+    #     """
+    #     headers = {}
+    #     #
+    #     # TODO: build your authentication here
+    #     #       username, password =...
+    #     # we provide dummy auth here
+    #     #
         
-        # NOT USED
-        auth = get_auth_from_url(proxy)
+    #     # NOT USED
+    #     auth = get_auth_from_url(proxy)
 
-        if auth:
-            headers["Proxy-Authorization"] = auth
+    #     if auth:
+    #         headers["Proxy-Authorization"] = auth
 
-        return headers
+    #     return headers
